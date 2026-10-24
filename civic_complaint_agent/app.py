@@ -4,19 +4,39 @@ from datetime import datetime, timezone
 from pathlib import Path
 from flask import Flask, request, jsonify, render_template, send_from_directory
 
-ROOT=Path(__file__).parent
-DATA=ROOT/"data"
-UPLOADS=ROOT/"uploads"
-DATA.mkdir(exist_ok=True); UPLOADS.mkdir(exist_ok=True)
-app=Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"]=8*1024*1024
-DB=DATA/"tickets.json"
-AREAS= json.loads((DATA/"amc_mock.json").read_text(encoding="utf-8"))
+ROOT = Path(__file__).parent
+DATA = ROOT / "data"
+
+# Serverless read-write compatibility (e.g. Vercel ephemeral /tmp filesystem)
+IS_VERCEL = bool(os.getenv("VERCEL"))
+if IS_VERCEL:
+    RUNTIME_DATA = Path("/tmp/data")
+    UPLOADS = Path("/tmp/uploads")
+    RUNTIME_DATA.mkdir(parents=True, exist_ok=True)
+    UPLOADS.mkdir(parents=True, exist_ok=True)
+    DB = RUNTIME_DATA / "tickets.json"
+    if not DB.exists():
+        bundled_db = DATA / "tickets.json"
+        seed_content = bundled_db.read_text(encoding="utf-8") if bundled_db.exists() else "[]"
+        DB.write_text(seed_content, encoding="utf-8")
+else:
+    UPLOADS = ROOT / "uploads"
+    DATA.mkdir(exist_ok=True)
+    UPLOADS.mkdir(exist_ok=True)
+    DB = DATA / "tickets.json"
+
+app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
+AREAS = json.loads((DATA / "amc_mock.json").read_text(encoding="utf-8"))
 
 def load_tickets():
-    if not DB.exists(): DB.write_text("[]",encoding="utf-8")
+    if not DB.exists():
+        DB.write_text("[]", encoding="utf-8")
     return json.loads(DB.read_text(encoding="utf-8"))
-def save_tickets(items): DB.write_text(json.dumps(items,indent=2),encoding="utf-8")
+
+def save_tickets(items):
+    DB.write_text(json.dumps(items, indent=2), encoding="utf-8")
+
 
 # Tool 1: image analysis. Uses OpenAI vision only when explicitly configured; otherwise demo-safe mock.
 def analyze_issue(image_path, user_hint=""):
