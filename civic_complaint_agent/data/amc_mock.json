@@ -1,0 +1,50 @@
+{
+  "city": "Ahmedabad (demo dataset only)",
+  "wards": [
+    {
+      "id": "W-01",
+      "name": "Navrangpura",
+      "aliases": [
+        "Navrangpura",
+        "Stadium",
+        "Commerce Six Roads"
+      ]
+    },
+    {
+      "id": "W-02",
+      "name": "Maninagar",
+      "aliases": [
+        "Maninagar",
+        "Kankaria",
+        "Jawahar Chowk"
+      ]
+    },
+    {
+      "id": "W-03",
+      "name": "Satellite",
+      "aliases": [
+        "Satellite",
+        "Jodhpur",
+        "Prahlad Nagar"
+      ]
+    },
+    {
+      "id": "W-04",
+      "name": "Bodakdev",
+      "aliases": [
+        "Bodakdev",
+        "Thaltej",
+        "Science City"
+      ]
+    },
+    {
+      "id": "W-05",
+      "name": "Paldi",
+      "aliases": [
+        "Paldi",
+        "Vasna",
+        "Anjali"
+      ]
+    }
+  ]
+}
