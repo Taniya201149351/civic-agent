@@ -1,14 +1,315 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NagarSathi · Civic Complaint Agent</title><link rel="stylesheet" href="/static/style.css"></head>
-<body><header><div class="brand"><span class="mark">N</span><div><b>NagarSathi</b><small>CIVIC COMPLAINT AGENT · DEMO</small></div></div><span class="mock">MOCK AMC SYSTEM</span></header>
-<main><section class="hero"><div><p class="eyebrow">REPORT IT. TRACK IT.</p><h1>Your neighbourhood,<br><em>heard and acted on.</em></h1><p class="sub">Upload a photo, confirm the issue and area, and let the agent route a complaint to the right mock municipal department.</p></div><div class="hero-art" aria-hidden="true"><div class="sun"></div><div class="building b1"></div><div class="building b2"></div><div class="road"></div><div class="pin">⌖</div></div></section>
-<div class="notice"><span>ⓘ</span><div><b>Hackathon prototype</b><p>Complaints are saved locally. No real AMC portal is contacted and no municipal complaint is actually filed.</p></div></div>
-<div class="layout"><section class="panel"><div class="panel-head"><div><span class="step">01 / NEW REPORT</span><h2>Tell us what happened</h2></div><span class="circle">↗</span></div>
-<form id="complaintForm"><label class="upload" for="photo"><span class="upload-icon">＋</span><b>Drop a photo or browse</b><small>JPG, PNG or WEBP · up to 8 MB</small><input id="photo" name="photo" type="file" accept="image/jpeg,image/png,image/webp"><div id="preview"></div></label>
-<div class="field"><label for="issue_type">Issue type <span>*</span></label><select id="issue_type" name="issue_type" required><option value="">Choose / confirm issue</option><option value="pothole">Pothole or damaged road</option><option value="garbage">Garbage / waste</option><option value="streetlight">Broken streetlight</option><option value="waterlogging">Waterlogging / drainage</option><option value="other">Other civic issue</option></select><small>AI vision is optional; choosing an issue confirms the category.</small></div>
-<div class="field"><label for="area">Area / locality <span>*</span></label><input id="area" name="area" list="areas" placeholder="e.g. Navrangpura" required><datalist id="areas">{% for w in wards %}<option value="{{w.name}}">{% for a in w.aliases %}<option value="{{a}}">{% endfor %}{% endfor %}</datalist><small>Location is matched against the included mock ward directory.</small></div>
-<div class="field"><label for="note">Extra details <small>(optional)</small></label><textarea id="note" name="note" rows="3" placeholder="Near a landmark, severity, or anything else to know…"></textarea></div>
-<button class="primary" type="submit" id="submitBtn">Analyse & file complaint <span>→</span></button></form><div id="result" aria-live="polite"></div></section>
-<aside><section class="panel status-panel"><span class="step">02 / TRACK A REPORT</span><h2>Already reported?</h2><p class="muted">Enter your tracking ID to fetch the latest status from the local mock database.</p><form id="statusForm"><div class="search"><input id="tracking" placeholder="AMC-YYMMDD-XXXXXX" required><button type="submit" aria-label="Check status">→</button></div></form><div id="statusResult" aria-live="polite"></div></section>
-<section class="panel flow-panel"><span class="step">AGENT WORKFLOW</span><h2>Four tools. One flow.</h2><div class="flow"><div class="flow-item"><span>01</span><div><b>Analyse photo</b><small>Vision API or clearly labelled fallback</small></div><i>↗</i></div><div class="flow-item"><span>02</span><div><b>Find ward</b><small>Area → mock ward directory</small></div><i>↗</i></div><div class="flow-item"><span>03</span><div><b>Route department</b><small>Issue type → department map</small></div><i>↗</i></div><div class="flow-item"><span>04</span><div><b>Create & track</b><small>Local JSON ticket store</small></div><i>✓</i></div></div></section></aside></div>
-<footer><span>Built for a civic-tech agent challenge</span><span>LOCAL DEMO · NO REAL SUBMISSION</span></footer></main><script src="/static/app.js"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NagarSathi · AI Civic Complaint Agent (AMC Simulation)</title>
+  <meta name="description" content="NagarSathi: An agent-assisted municipal complaint filing and tracking portal simulating Ahmedabad Municipal Corporation (AMC) civic issue resolution.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="brand">
+        <div class="brand-logo" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/>
+            <circle cx="12" cy="10" r="3"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-title">NagarSathi</span>
+          <span class="brand-subtitle">CIVIC COMPLAINT AGENT</span>
+        </div>
+      </div>
+
+      <div class="header-badges">
+        <span class="badge badge-sim">
+          <span class="pulse-dot"></span>
+          AMC Simulation Mode
+        </span>
+        <button id="viewTicketsBtn" class="badge badge-stat" title="View all mock tickets filed">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <span id="ticketCountBadge">0 Reports</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <!-- Hero Section -->
+    <section class="hero-card">
+      <div class="hero-content">
+        <div class="hero-tag">
+          <span class="tag-icon">⚡</span>
+          <span>REPORT · ROUTE · RESOLVE</span>
+        </div>
+        <h1 class="hero-heading">Your neighbourhood,<br><span class="gradient-text">heard and acted on.</span></h1>
+        <p class="hero-subtext">
+          Upload a photo of damaged roads, garbage, broken lighting, or waterlogging. Our civic agent identifies the issue, maps your AMC ward, and routes the complaint to the right municipal department.
+        </p>
+
+        <!-- Quick 1-Click Demo Presets -->
+        <div class="presets-container">
+          <span class="presets-label">⚡ QUICK DEMO PRESETS:</span>
+          <div class="presets-chips">
+            <button type="button" class="preset-btn" data-preset="pothole">
+              🕳️ Pothole (Navrangpura)
+            </button>
+            <button type="button" class="preset-btn" data-preset="garbage">
+              🗑️ Waste (Satellite)
+            </button>
+            <button type="button" class="preset-btn" data-preset="streetlight">
+              💡 Streetlight (Maninagar)
+            </button>
+            <button type="button" class="preset-btn" data-preset="waterlogging">
+              🌊 Drainage (Bodakdev)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Agent Flow Diagram Banner -->
+      <div class="agent-flow-banner" aria-label="Agent sequence architecture">
+        <div class="flow-step-chip">
+          <span class="f-num">01</span>
+          <div class="f-body">
+            <b>Vision Analysis</b>
+            <small>AI / Confirmed Fallback</small>
+          </div>
+        </div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step-chip">
+          <span class="f-num">02</span>
+          <div class="f-body">
+            <b>Ward Resolution</b>
+            <small>Area ➔ AMC Mock DB</small>
+          </div>
+        </div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step-chip">
+          <span class="f-num">03</span>
+          <div class="f-body">
+            <b>Dept. Routing</b>
+            <small>Specialized AMC Unit</small>
+          </div>
+        </div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step-chip">
+          <span class="f-num">04</span>
+          <div class="f-body">
+            <b>Lifecycle Tracking</b>
+            <small>JSON Store & History</small>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Workspace Layout -->
+    <div class="workspace-grid">
+      
+      <!-- Left Column: Complaint Filing Form -->
+      <section class="panel-card" id="lodgePanel">
+        <div class="panel-header">
+          <div>
+            <span class="step-badge">STEP 01 / NEW REPORT</span>
+            <h2 class="panel-title">File a Civic Grievance</h2>
+          </div>
+          <span class="panel-icon" aria-hidden="true">✎</span>
+        </div>
+
+        <form id="complaintForm" class="complaint-form" novalidate>
+          
+          <!-- Image Upload Dropzone -->
+          <div class="form-group">
+            <label class="group-label">Photograph of Problem <span class="req">*</span></label>
+            <div id="dropZone" class="dropzone" tabindex="0" role="button" aria-label="Drop complaint photo or click to browse">
+              <input id="photo" name="photo" type="file" accept="image/jpeg,image/png,image/webp" class="visually-hidden">
+              <div id="dropPrompt" class="drop-prompt">
+                <div class="upload-icon-circle">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                </div>
+                <div class="drop-text">
+                  <strong class="drop-action">Click to upload</strong> or drag & drop
+                  <span class="drop-hint">Supports JPG, PNG, WEBP (Max 8 MB)</span>
+                </div>
+              </div>
+              <div id="previewContainer" class="preview-container" style="display:none">
+                <img id="previewImg" src="" alt="Selected civic problem preview" class="preview-image">
+                <div class="preview-meta">
+                  <span id="previewName" class="preview-filename">photo.jpg</span>
+                  <button type="button" id="removePhotoBtn" class="btn-remove-photo" title="Remove photograph">✕ Remove</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Issue Type Dropdown -->
+          <div class="form-group">
+            <label for="issue_type" class="group-label">Issue Category <span class="req">*</span></label>
+            <div class="select-wrapper">
+              <select id="issue_type" name="issue_type" required>
+                <option value="">Select or confirm issue category...</option>
+                <option value="pothole">🕳️ Pothole / Damaged Road Surface</option>
+                <option value="garbage">🗑️ Garbage Accumulation / Waste Pile</option>
+                <option value="streetlight">💡 Broken / Non-Functional Streetlight</option>
+                <option value="waterlogging">🌊 Waterlogging / Blocked Drainage</option>
+                <option value="other">📌 Other Civic Grievance</option>
+              </select>
+            </div>
+            <p class="field-help">If AI vision is enabled, it verifies image pixels; your selection acts as explicit resident confirmation.</p>
+          </div>
+
+          <!-- Locality / Ward Input with Fallback Container -->
+          <div class="form-group">
+            <label for="area" class="group-label">Locality / Area <span class="req">*</span></label>
+            <div class="input-with-icon">
+              <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              <input id="area" name="area" list="areas" placeholder="e.g. Navrangpura, Stadium, Satellite..." autocomplete="off" required>
+            </div>
+            <datalist id="areas">
+              {% for w in wards %}
+                <option value="{{w.name}}">
+                {% for a in w.aliases %}
+                  <option value="{{a}}">
+                {% endfor %}
+              {% endfor %}
+            </datalist>
+
+            <!-- Dynamic Interactive Locality Suggestions / Error Box -->
+            <div id="localitySuggestions" class="locality-suggestions" style="display:none">
+              <div class="suggestion-header">
+                <span class="warning-icon">⚠️</span>
+                <span id="suggestionMsg">Locality not recognized. Please choose from supported AMC wards:</span>
+              </div>
+              <div id="suggestionPills" class="suggestion-pills"></div>
+            </div>
+
+            <p class="field-help">Mapped against AMC mock wards (Navrangpura, Maninagar, Satellite, Bodakdev, Paldi).</p>
+          </div>
+
+          <!-- Extra Notes -->
+          <div class="form-group">
+            <label for="note" class="group-label">Additional Landmarks & Notes <small class="opt">(Optional)</small></label>
+            <textarea id="note" name="note" rows="2" placeholder="e.g. Opposite Commerce College gate, near crossroad..."></textarea>
+          </div>
+
+          <!-- Submit Button -->
+          <button type="submit" id="submitBtn" class="btn-primary">
+            <span class="btn-text">Analyse & File Complaint</span>
+            <span class="btn-arrow">→</span>
+          </button>
+        </form>
+
+        <!-- Live Agent Execution Progression Tracker -->
+        <div id="agentPipeline" class="agent-pipeline" style="display:none">
+          <div class="pipeline-header">
+            <span class="pulse-indicator"></span>
+            <b>Civic Agent Workflow Running</b>
+          </div>
+          <div class="pipeline-steps">
+            <div class="pipeline-step" id="pipeStep1">
+              <span class="step-icon">1</span>
+              <div class="step-text">
+                <b>Visual Inspection</b>
+                <small>Analyzing pixels & category verification...</small>
+              </div>
+              <span class="step-status">⏳</span>
+            </div>
+            <div class="pipeline-step" id="pipeStep2">
+              <span class="step-icon">2</span>
+              <div class="step-text">
+                <b>Ward Resolution</b>
+                <small>Matching area to AMC ward directory...</small>
+              </div>
+              <span class="step-status">⏳</span>
+            </div>
+            <div class="pipeline-step" id="pipeStep3">
+              <span class="step-icon">3</span>
+              <div class="step-text">
+                <b>Department Routing</b>
+                <small>Routing to responsible AMC grievance cell...</small>
+              </div>
+              <span class="step-status">⏳</span>
+            </div>
+            <div class="pipeline-step" id="pipeStep4">
+              <span class="step-icon">4</span>
+              <div class="step-text">
+                <b>Ticket Issuance</b>
+                <small>Generating audit tracking ID in local store...</small>
+              </div>
+              <span class="step-status">⏳</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Result Card Output -->
+        <div id="result" class="result-area" aria-live="polite"></div>
+      </section>
+
+      <!-- Right Column: Status Tracking & Workflow Inspection -->
+      <aside class="sidebar-column">
+        
+        <!-- Tracking Panel -->
+        <section class="panel-card tracking-card" id="trackPanel">
+          <div class="panel-header">
+            <div>
+              <span class="step-badge">STEP 02 / TRACK STATUS</span>
+              <h2 class="panel-title">Track a Complaint</h2>
+            </div>
+            <span class="panel-icon" aria-hidden="true">🔍</span>
+          </div>
+          <p class="panel-desc">Enter your complaint tracking ID to view live routing details, assigned ward engineer, and stage timeline.</p>
+
+          <form id="statusForm" class="status-search-form">
+            <div class="search-input-group">
+              <input id="tracking" name="tracking" placeholder="e.g. AMC-261024-ABCDEF" autocomplete="off" required>
+              <button type="submit" class="btn-search" aria-label="Fetch ticket status">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              </button>
+            </div>
+          </form>
+
+          <!-- Status Result Display -->
+          <div id="statusResult" class="status-result-area" aria-live="polite"></div>
+        </section>
+
+        <!-- Recent Tickets Drawer -->
+        <section class="panel-card feed-card">
+          <div class="panel-header">
+            <div>
+              <span class="step-badge">COMMUNITY LOG</span>
+              <h3 class="panel-subtitle">Recent Mock Complaints</h3>
+            </div>
+            <button type="button" id="refreshTicketsBtn" class="btn-text-action" title="Refresh local tickets">⟳ Refresh</button>
+          </div>
+          <div id="recentTicketsList" class="recent-tickets-list">
+            <p class="empty-state">No mock tickets filed yet in this session. Submit your first complaint above!</p>
+          </div>
+        </section>
+      </aside>
+    </div>
+
+    <!-- Honesty & Boundary Disclaimer Footer -->
+    <footer class="app-footer">
+      <div class="footer-left">
+        <strong>NagarSathi</strong> · Built for Civic Tech & Agentic AI Hackathon
+      </div>
+      <div class="footer-right">
+        <span class="tag-honest">Honesty Boundary</span>
+        <span>Local Mock AMC Simulation · Local JSON Database · No Real Municipal Portal Contacted</span>
+      </div>
+    </footer>
+  </main>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container" aria-live="assertive"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

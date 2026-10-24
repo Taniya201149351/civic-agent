@@ -29,4 +29,43 @@ class CivicTests(unittest.TestCase):
         self.assertEqual(response.status_code,400)
         response=client.get("/api/status/AMC-NOT-REAL")
         self.assertEqual(response.status_code,404)
+
+    def test_status_advancement_lifecycle(self):
+        t = civic.create_ticket({"area": "Navrangpura", "issue_type": "pothole"})
+        tracking_id = t["tracking_id"]
+        self.assertEqual(t["status"], "Submitted (mock)")
+        
+        # Advance 1: Assigned
+        t1 = civic.advance_ticket_status(tracking_id)
+        self.assertEqual(t1["status"], "Assigned to Ward Engineer")
+        self.assertEqual(len(t1["status_history"]), 2)
+        
+        # Advance 2: In Progress
+        t2 = civic.advance_ticket_status(tracking_id)
+        self.assertEqual(t2["status"], "In Progress")
+        
+        # Advance 3: Resolved
+        t3 = civic.advance_ticket_status(tracking_id)
+        self.assertEqual(t3["status"], "Resolved")
+
+    def test_unknown_ward_returns_suggestions(self):
+        client = civic.app.test_client()
+        response = client.post("/api/complaints", data={"area": "Mars Colony", "issue_type": "pothole"})
+        self.assertEqual(response.status_code, 400)
+        data = response.get_json()
+        self.assertIn("suggestions", data)
+        self.assertIn("Navrangpura", data["suggestions"])
+
+    def test_api_wards_and_tickets_stats(self):
+        client = civic.app.test_client()
+        r_wards = client.get("/api/wards")
+        self.assertEqual(r_wards.status_code, 200)
+        self.assertIn("wards", r_wards.get_json())
+        
+        civic.create_ticket({"area": "Satellite", "issue_type": "garbage"})
+        r_tickets = client.get("/api/tickets")
+        self.assertEqual(r_tickets.status_code, 200)
+        t_data = r_tickets.get_json()
+        self.assertGreaterEqual(t_data["counts"]["total"], 1)
+
 if __name__=="__main__": unittest.main()

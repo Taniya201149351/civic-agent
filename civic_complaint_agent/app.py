@@ -55,65 +55,225 @@ def analyze_issue(image_path, user_hint=""):
 
 # Tool 2: ward and department lookup from local mock AMC data.
 def lookup_ward(area):
-    norm=(area or "").strip().lower()
-    for ward in AREAS["wards"]:
-        if norm in [x.lower() for x in ward["aliases"]] or norm==ward["name"].lower():
+    norm = (area or "").strip().lower()
+    for ward in AREAS.get("wards", []):
+        aliases = [x.lower() for x in ward.get("aliases", [])]
+        if norm in aliases or norm == ward.get("name", "").lower():
             return ward
     return None
+
 def department_for(kind):
-    return {"pothole":"Roads & Engineering","garbage":"Solid Waste Management",
-            "streetlight":"Electrical / Street Lighting","waterlogging":"Storm Water & Drainage",
-            "other":"General Civic Grievances"}.get(kind,"General Civic Grievances")
+    return {
+        "pothole": "Roads & Engineering",
+        "garbage": "Solid Waste Management",
+        "streetlight": "Electrical / Street Lighting",
+        "waterlogging": "Storm Water & Drainage",
+        "other": "General Civic Grievances"
+    }.get(kind, "General Civic Grievances")
+
+STATUS_LIFECYCLE = [
+    "Submitted (mock)",
+    "Assigned to Ward Engineer",
+    "In Progress",
+    "Resolved"
+]
 
 # Tool 3: ticket creation in mock local JSON database.
 def create_ticket(payload):
-    tickets=load_tickets()
-    ticket={"tracking_id":"AMC-"+datetime.now().strftime("%y%m%d")+"-"+uuid.uuid4().hex[:6].upper(),
-            **payload,"status":"Submitted (mock)","created_at":datetime.now(timezone.utc).isoformat(),
-            "status_history":[{"status":"Submitted (mock)","at":datetime.now(timezone.utc).isoformat()}]}
-    tickets.insert(0,ticket); save_tickets(tickets)
+    tickets = load_tickets()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    tracking_id = "AMC-" + datetime.now().strftime("%y%m%d") + "-" + uuid.uuid4().hex[:6].upper()
+    ticket = {
+        "tracking_id": tracking_id,
+        **payload,
+        "status": STATUS_LIFECYCLE[0],
+        "created_at": now_iso,
+        "status_history": [
+            {
+                "status": STATUS_LIFECYCLE[0],
+                "at": now_iso,
+                "note": "Complaint lodged in municipal mock registry. Pending ward engineer allocation."
+            }
+        ]
+    }
+    tickets.insert(0, ticket)
+    save_tickets(tickets)
     return ticket
 
 # Tool 4: status fetch from the local JSON database.
 def fetch_status(tracking_id):
-    return next((t for t in load_tickets() if t["tracking_id"].lower()==tracking_id.strip().lower()),None)
+    normalized = (tracking_id or "").strip().lower()
+    return next((t for t in load_tickets() if t.get("tracking_id", "").lower() == normalized), None)
+
+# Tool 5: advance ticket status in mock lifecycle
+def advance_ticket_status(tracking_id):
+    tickets = load_tickets()
+    normalized = (tracking_id or "").strip().lower()
+    ticket = next((t for t in tickets if t.get("tracking_id", "").lower() == normalized), None)
+    if not ticket:
+        return None
+    
+    current_status = ticket.get("status", STATUS_LIFECYCLE[0])
+    try:
+        current_idx = STATUS_LIFECYCLE.index(current_status)
+    except ValueError:
+        current_idx = 0
+    
+    next_idx = (current_idx + 1) % len(STATUS_LIFECYCLE)
+    next_status = STATUS_LIFECYCLE[next_idx]
+    
+    notes = {
+        "Assigned to Ward Engineer": f"Assigned to AMC {ticket.get('ward_name', 'Local')} Ward Junior Engineer for site inspection.",
+        "In Progress": f"Work order dispatched to {ticket.get('department', 'department')} maintenance crew.",
+        "Resolved": f"Civic issue verified resolved on site by {ticket.get('ward_name', 'ward')} team. Ticket closed.",
+        "Submitted (mock)": "Status reset to initial state for testing."
+    }
+    
+    now_iso = datetime.now(timezone.utc).isoformat()
+    ticket["status"] = next_status
+    if "status_history" not in ticket:
+        ticket["status_history"] = []
+    ticket["status_history"].append({
+        "status": next_status,
+        "at": now_iso,
+        "note": notes.get(next_status, f"Status updated to {next_status}.")
+    })
+    save_tickets(tickets)
+    return ticket
 
 @app.get("/")
-def index(): return render_template("index.html", wards=AREAS["wards"])
+def index():
+    return render_template("index.html", wards=AREAS.get("wards", []))
+
+@app.get("/api/wards")
+def list_wards():
+    return jsonify(city=AREAS.get("city", "Ahmedabad"), wards=AREAS.get("wards", []))
+
 @app.post("/api/complaints")
 def submit_complaint():
-    area=request.form.get("area","").strip()
-    issue_hint=request.form.get("issue_type","")
-    if not area: return jsonify(error="Enter an area name so the mock ward lookup can route this complaint."),400
-    ward=lookup_ward(area)
-    if not ward: return jsonify(error=f"Area '{area}' was not found in mock AMC data. Try: "+", ".join(w["name"] for w in AREAS["wards"])),400
-    upload=request.files.get("photo")
-    image_path=None; image_name=None
+    area = request.form.get("area", "").strip()
+    issue_hint = request.form.get("issue_type", "").strip().lower()
+    
+    if not area:
+        return jsonify(
+            error="Enter an area name so the mock ward lookup can route this complaint.",
+            suggestions=[w["name"] for w in AREAS.get("wards", [])]
+        ), 400
+    
+    ward = lookup_ward(area)
+    if not ward:
+        valid_names = [w["name"] for w in AREAS.get("wards", [])]
+        return jsonify(
+            error=f"Area '{area}' was not found in mock AMC data. Try: " + ", ".join(valid_names),
+            suggestions=valid_names,
+            wards=AREAS.get("wards", [])
+        ), 400
+    
+    upload = request.files.get("photo")
+    image_path = None
+    image_name = None
     if upload and upload.filename:
-        ext=Path(upload.filename).suffix.lower()
-        if ext not in {".jpg",".jpeg",".png",".webp"}: return jsonify(error="Upload a JPG, PNG, or WEBP image."),400
-        image_name=uuid.uuid4().hex+ext; image_path=str(UPLOADS/image_name); upload.save(image_path)
-    analysis=analyze_issue(image_path,issue_hint)
-    # The selected issue is an explicit user confirmation, so it overrides uncertain analysis.
-    if issue_hint in {"pothole","garbage","streetlight","waterlogging","other"}:
-        analysis["issue_type"]=issue_hint
-        analysis["description"]=f"{issue_hint.title()} reported by resident."
-        analysis["user_confirmed"]=True
-    ticket=create_ticket({"area":area,"ward_id":ward["id"],"ward_name":ward["name"],
-        "department":department_for(analysis["issue_type"]),"issue_type":analysis["issue_type"],
-        "description":analysis["description"],"analysis":analysis,"photo":image_name,
-        "location_source":"user-entered area","reporter_note":request.form.get("note","").strip()[:500]})
-    return jsonify(ticket=ticket,ward=ward,workflow=["Image analysis","Ward lookup","Department routing","Ticket creation"]),201
+        ext = Path(upload.filename).suffix.lower()
+        if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+            return jsonify(error="Upload a JPG, PNG, or WEBP image."), 400
+        image_name = uuid.uuid4().hex + ext
+        image_path = str(UPLOADS / image_name)
+        upload.save(image_path)
+    
+    # Run vision or demo analysis
+    raw_analysis = analyze_issue(image_path, issue_hint)
+    ai_predicted_type = raw_analysis.get("issue_type", "other")
+    has_image = bool(image_path)
+    is_real_vision = raw_analysis.get("mode") == "AI vision"
+    
+    # Handle user confirmation & potential disagreement transparently (Requirement 3.B)
+    allowed_categories = {"pothole", "garbage", "streetlight", "waterlogging", "other"}
+    user_confirmed = issue_hint in allowed_categories
+    
+    has_disagreement = False
+    disagreement_explanation = None
+    
+    if user_confirmed:
+        final_issue_type = issue_hint
+        if is_real_vision and ai_predicted_type != issue_hint:
+            has_disagreement = True
+            disagreement_explanation = (
+                f"AI Vision detected '{ai_predicted_type}' ({int(raw_analysis.get('confidence', 0.5) * 100)}% confidence), "
+                f"but resident explicitly specified '{issue_hint}'. Routed based on resident confirmation."
+            )
+        else:
+            disagreement_explanation = None
+    else:
+        final_issue_type = ai_predicted_type
+    
+    routing_dept = department_for(final_issue_type)
+    
+    ticket_payload = {
+        "area": area,
+        "ward_id": ward["id"],
+        "ward_name": ward["name"],
+        "department": routing_dept,
+        "issue_type": final_issue_type,
+        "user_selected_issue": issue_hint if user_confirmed else None,
+        "ai_predicted_issue": ai_predicted_type if (has_image or is_real_vision) else None,
+        "has_disagreement": has_disagreement,
+        "disagreement_explanation": disagreement_explanation,
+        "routing_explanation": (
+            f"Complaint routed to {routing_dept} based on verified {final_issue_type} category "
+            f"({ 'resident confirmation overriding AI prediction' if has_disagreement else 'resident selection / classification' })."
+        ),
+        "description": raw_analysis.get("description", f"{final_issue_type.title()} reported by resident."),
+        "analysis": {
+            **raw_analysis,
+            "final_routing_category": final_issue_type,
+            "user_confirmed": user_confirmed
+        },
+        "photo": image_name,
+        "location_source": "user-entered locality lookup",
+        "reporter_note": request.form.get("note", "").strip()[:500]
+    }
+    
+    ticket = create_ticket(ticket_payload)
+    return jsonify(
+        ticket=ticket,
+        ward=ward,
+        workflow=["1. Image analysis", "2. Ward resolution", "3. Department routing", "4. Ticket creation & tracking"]
+    ), 201
 
 @app.get("/api/status/<tracking_id>")
 def status(tracking_id):
-    ticket=fetch_status(tracking_id)
-    if not ticket: return jsonify(error="Tracking ID not found in the local mock database."),404
+    ticket = fetch_status(tracking_id)
+    if not ticket:
+        return jsonify(error="Tracking ID not found in the local mock database."), 404
     return jsonify(ticket=ticket)
+
+@app.post("/api/status/<tracking_id>/advance")
+def advance_status(tracking_id):
+    ticket = advance_ticket_status(tracking_id)
+    if not ticket:
+        return jsonify(error="Tracking ID not found in the local mock database."), 404
+    return jsonify(ticket=ticket, message=f"Ticket status advanced to '{ticket['status']}'")
+
 @app.get("/api/tickets")
-def tickets(): return jsonify(tickets=load_tickets())
+def tickets():
+    all_tickets = load_tickets()
+    counts = {
+        "total": len(all_tickets),
+        "submitted": sum(1 for t in all_tickets if "submitted" in t.get("status", "").lower()),
+        "assigned": sum(1 for t in all_tickets if "assigned" in t.get("status", "").lower()),
+        "in_progress": sum(1 for t in all_tickets if "progress" in t.get("status", "").lower()),
+        "resolved": sum(1 for t in all_tickets if "resolved" in t.get("status", "").lower()),
+    }
+    return jsonify(tickets=all_tickets, counts=counts)
+
 @app.get("/uploads/<path:filename>")
-def uploaded(filename): return send_from_directory(UPLOADS,filename)
+def uploaded(filename):
+    return send_from_directory(UPLOADS, filename)
+
 @app.errorhandler(413)
-def too_large(_): return jsonify(error="Image is too large. Maximum upload size is 8 MB."),413
-if __name__=="__main__": app.run(debug=True,port=int(os.getenv("PORT","5000")))
+def too_large(_):
+    return jsonify(error="Image is too large. Maximum upload size is 8 MB."), 413
+
+if __name__ == "__main__":
+    app.run(debug=True, port=int(os.getenv("PORT", "5000")))
+
